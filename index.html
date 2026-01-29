@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Altay'ın Macerası</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<style>
+body{margin:0;background:#000;overflow:hidden;touch-action:none;}
+</style>
+</head>
+<body>
+
+<script>
+/* ================= GLOBAL ================= */
+const WIDTH=800, HEIGHT=600;
+const WORLD_WIDTH=5200;
+let soundEnabled=true;
+
+/* ================= CONFIG ================= */
+const config={
+ type:Phaser.AUTO,
+ width:WIDTH,
+ height:HEIGHT,
+ scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},
+ physics:{default:'arcade',arcade:{gravity:{y:1400}}},
+ scene:[MapScene,Level1Scene]
+};
+new Phaser.Game(config);
+
+/* ================= MAP SCENE ================= */
+function MapScene(){ Phaser.Scene.call(this,{key:'MapScene'}); }
+MapScene.prototype=Object.create(Phaser.Scene.prototype);
+
+MapScene.prototype.preload=function(){
+ this.load.image('map','https://labs.phaser.io/assets/skies/space3.png');
+};
+
+MapScene.prototype.create=function(){
+ this.add.image(400,300,'map');
+ this.add.text(240,200,'ALTAY\'IN MACERASI',{fontSize:'36px',color:'#fff'});
+ const btn=this.add.text(300,300,'▶ BAŞLA',{fontSize:'32px',backgroundColor:'#ffffff33',padding:10})
+   .setInteractive();
+ btn.on('pointerdown',()=>this.scene.start('Level1Scene'));
+};
+
+/* ================= LEVEL 1 ================= */
+function Level1Scene(){ Phaser.Scene.call(this,{key:'Level1Scene'}); }
+Level1Scene.prototype=Object.create(Phaser.Scene.prototype);
+
+Level1Scene.prototype.preload=function(){
+ this.load.image('sky','https://labs.phaser.io/assets/skies/sky4.png');
+ this.load.image('ground','https://labs.phaser.io/assets/sprites/platform.png');
+ this.load.image('enemy','https://labs.phaser.io/assets/sprites/phaser-dude.png');
+ this.load.image('flag','https://labs.phaser.io/assets/sprites/flag.png');
+ this.load.image('fireball','https://labs.phaser.io/assets/sprites/bullets/bullet1.png');
+
+ /* 🔥 BURAYI DEĞİŞTİR → Altay sprite */
+ this.load.spritesheet('altay',
+   'https://labs.phaser.io/assets/sprites/dude.png',
+   {frameWidth:32,frameHeight:48}
+ );
+
+ this.load.audio('bgm','https://labs.phaser.io/assets/audio/tech/techno_01.mp3');
+ this.load.audio('hit','https://labs.phaser.io/assets/audio/SoundEffects/explosion.mp3');
+};
+
+Level1Scene.prototype.create=function(){
+ this.lives=3;
+ this.checkpointX=100;
+
+ this.physics.world.setBounds(0,0,WORLD_WIDTH,HEIGHT);
+ this.add.tileSprite(0,0,WORLD_WIDTH,HEIGHT,'sky').setOrigin(0);
+
+ /* Zemin */
+ this.platforms=this.physics.add.staticGroup();
+ for(let i=0;i<WORLD_WIDTH/400;i++)
+   this.platforms.create(400*i+200,568,'ground').setScale(2).refreshBody();
+
+ /* Altay */
+ this.altay=this.physics.add.sprite(100,450,'altay');
+ this.altay.setCollideWorldBounds(true);
+
+ /* Kamera */
+ this.cameras.main.setBounds(0,0,WORLD_WIDTH,HEIGHT);
+ this.cameras.main.startFollow(this.altay,true,0.08,0.08);
+
+ /* Düşmanlar */
+ this.enemies=this.physics.add.group();
+ this.spawnEnemy(800);
+ this.spawnEnemy(1600);
+ this.spawnEnemy(2600);
+
+ /* Boss */
+ this.boss=this.physics.add.sprite(WORLD_WIDTH-500,420,'enemy').setScale(2);
+ this.boss.hp=3;
+
+ /* Checkpoint */
+ this.flag=this.physics.add.staticSprite(3000,430,'flag');
+
+ this.fireballs=this.physics.add.group();
+
+ /* Çarpışmalar */
+ this.physics.add.collider(this.altay,this.platforms);
+ this.physics.add.collider(this.enemies,this.platforms);
+ this.physics.add.collider(this.boss,this.platforms);
+
+ this.physics.add.overlap(this.altay,this.enemies,this.playerHit,null,this);
+ this.physics.add.overlap(this.altay,this.boss,this.playerHit,null,this);
+ this.physics.add.overlap(this.fireballs,this.boss,this.hitBoss,null,this);
+ this.physics.add.overlap(this.altay,this.flag,this.setCheckpoint,null,this);
+
+ /* Animasyon */
+ this.anims.create({
+   key:'run',
+   frames:this.anims.generateFrameNumbers('altay',{start:0,end:3}),
+   frameRate:10,
+   repeat:-1
+ });
+
+ /* Ses */
+ this.bgm=this.sound.add('bgm',{loop:true,volume:0.3});
+ this.hitSfx=this.sound.add('hit');
+ this.input.once('pointerdown',()=>{ if(soundEnabled) this.bgm.play(); });
+
+ /* UI */
+ this.createUI();
+};
+
+Level1Scene.prototype.update=function(){
+ if(this.input.keyboard?.addKey('LEFT').isDown){
+   this.altay.setVelocityX(-220);
+   this.altay.anims.play('run',true);
+   this.altay.flipX=true;
+ }else if(this.input.keyboard?.addKey('RIGHT').isDown){
+   this.altay.setVelocityX(220);
+   this.altay.anims.play('run',true);
+   this.altay.flipX=false;
+ }else this.altay.setVelocityX(0);
+
+ if(Phaser.Input.Keyboard.JustDown(this.input.keyboard?.addKey('UP')) &&
+    this.altay.body.touching.down){
+   this.altay.setVelocityY(-700);
+ }
+
+ this.enemies.children.iterate(e=>{
+   if(e) e.setVelocityX(Math.sin(e.x*0.01)*100);
+ });
+
+ this.boss.setVelocityX(Math.sin(this.boss.x*0.005)*150);
+};
+
+/* ================= LOGIC ================= */
+Level1Scene.prototype.spawnEnemy=function(x){
+ let e=this.physics.add.sprite(x,450,'enemy');
+ this.enemies.add(e);
+};
+
+Level1Scene.prototype.playerHit=function(p,e){
+ if(p.body.touching.down){
+   e.destroy();
+   p.setVelocityY(-400);
+ }else{
+   this.lives--;
+   if(soundEnabled) this.hitSfx.play();
+   if(this.lives<=0){
+     alert('💀 GAME OVER');
+     this.scene.start('MapScene');
+   }
+   p.setX(this.checkpointX);
+ }
+};
+
+Level1Scene.prototype.hitBoss=function(f,b){
+ f.destroy();
+ b.hp--;
+ if(soundEnabled) this.hitSfx.play();
+ if(b.hp<=0){
+   b.destroy();
+   alert('🏆 BOSS YENİLDİ!');
+   this.scene.start('MapScene');
+ }
+};
+
+Level1Scene.prototype.setCheckpoint=function(p,f){
+ this.checkpointX=f.x;
+};
+
+/* ================= UI ================= */
+Level1Scene.prototype.createUI=function(){
+ const soundBtn=this.add.text(740,20,'🔊',{fontSize:'32px'})
+   .setScrollFactor(0).setInteractive();
+ soundBtn.on('pointerdown',()=>{
+   soundEnabled=!soundEnabled;
+   soundBtn.setText(soundEnabled?'🔊':'🔇');
+   this.sound.mute=!soundEnabled;
+ });
+
+ this.livesText=this.add.text(20,20,'❤️ x'+this.lives,
+   {fontSize:'24px'}).setScrollFactor(0);
+};
+</script>
+
+</body>
+</html>
