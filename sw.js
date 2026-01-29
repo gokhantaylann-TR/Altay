@@ -1,16 +1,17 @@
-const CACHE = "altay-v1";
-const FILES = [
-  "./",
-  "./index.html",
-  "./manifest.json"
-];
-
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open('altay-v1').then(cache =>
+      cache.addAll([
+        './',
+        './index.html',
+        './manifest.json'
+      ])
+    )
+  );
 });
 
-self.addEventListener("fetch", e => {
+self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    caches.match(e.request).then(res => res || fetch(e.request))
   );
 });
