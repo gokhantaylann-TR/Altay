@@ -4,7 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <title>Altay'ın Macerası</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+
 <style>
 body{margin:0;background:#000;overflow:hidden;touch-action:none;}
 </style>
@@ -28,18 +33,15 @@ const config={
 };
 new Phaser.Game(config);
 
-/* ================= MAP SCENE ================= */
+/* ================= MAP ================= */
 function MapScene(){ Phaser.Scene.call(this,{key:'MapScene'}); }
 MapScene.prototype=Object.create(Phaser.Scene.prototype);
 
-MapScene.prototype.preload=function(){
- this.load.image('map','https://labs.phaser.io/assets/skies/space3.png');
-};
-
 MapScene.prototype.create=function(){
- this.add.image(400,300,'map');
- this.add.text(240,200,'ALTAY\'IN MACERASI',{fontSize:'36px',color:'#fff'});
- const btn=this.add.text(300,300,'▶ BAŞLA',{fontSize:'32px',backgroundColor:'#ffffff33',padding:10})
+ this.add.rectangle(400,300,800,600,0x0a0a2a);
+ this.add.text(190,160,"ALTAY'IN MACERASI",{fontSize:'36px',color:'#fff'});
+ const btn=this.add.text(320,300,"▶ BAŞLA",
+   {fontSize:'32px',backgroundColor:'#ffffff33',padding:12})
    .setInteractive();
  btn.on('pointerdown',()=>this.scene.start('Level1Scene'));
 };
@@ -55,7 +57,7 @@ Level1Scene.prototype.preload=function(){
  this.load.image('flag','https://labs.phaser.io/assets/sprites/flag.png');
  this.load.image('fireball','https://labs.phaser.io/assets/sprites/bullets/bullet1.png');
 
- /* 🔥 BURAYI DEĞİŞTİR → Altay sprite */
+ /* 🔥 ALTAY SPRITE (placeholder – burayı istediğin zaman değiştirirsin) */
  this.load.spritesheet('altay',
    'https://labs.phaser.io/assets/sprites/dude.png',
    {frameWidth:32,frameHeight:48}
@@ -87,9 +89,10 @@ Level1Scene.prototype.create=function(){
 
  /* Düşmanlar */
  this.enemies=this.physics.add.group();
- this.spawnEnemy(800);
- this.spawnEnemy(1600);
- this.spawnEnemy(2600);
+ [800,1600,2600].forEach(x=>{
+   let e=this.physics.add.sprite(x,450,'enemy');
+   this.enemies.add(e);
+ });
 
  /* Boss */
  this.boss=this.physics.add.sprite(WORLD_WIDTH-500,420,'enemy').setScale(2);
@@ -97,7 +100,6 @@ Level1Scene.prototype.create=function(){
 
  /* Checkpoint */
  this.flag=this.physics.add.staticSprite(3000,430,'flag');
-
  this.fireballs=this.physics.add.group();
 
  /* Çarpışmalar */
@@ -114,8 +116,7 @@ Level1Scene.prototype.create=function(){
  this.anims.create({
    key:'run',
    frames:this.anims.generateFrameNumbers('altay',{start:0,end:3}),
-   frameRate:10,
-   repeat:-1
+   frameRate:10, repeat:-1
  });
 
  /* Ses */
@@ -128,43 +129,36 @@ Level1Scene.prototype.create=function(){
 };
 
 Level1Scene.prototype.update=function(){
- if(this.input.keyboard?.addKey('LEFT').isDown){
+ const cursors=this.input.keyboard.createCursorKeys();
+
+ if(cursors.left.isDown){
    this.altay.setVelocityX(-220);
    this.altay.anims.play('run',true);
    this.altay.flipX=true;
- }else if(this.input.keyboard?.addKey('RIGHT').isDown){
+ }else if(cursors.right.isDown){
    this.altay.setVelocityX(220);
    this.altay.anims.play('run',true);
    this.altay.flipX=false;
  }else this.altay.setVelocityX(0);
 
- if(Phaser.Input.Keyboard.JustDown(this.input.keyboard?.addKey('UP')) &&
-    this.altay.body.touching.down){
+ if(Phaser.Input.Keyboard.JustDown(cursors.up) && this.altay.body.touching.down)
    this.altay.setVelocityY(-700);
- }
 
  this.enemies.children.iterate(e=>{
    if(e) e.setVelocityX(Math.sin(e.x*0.01)*100);
  });
-
  this.boss.setVelocityX(Math.sin(this.boss.x*0.005)*150);
 };
 
 /* ================= LOGIC ================= */
-Level1Scene.prototype.spawnEnemy=function(x){
- let e=this.physics.add.sprite(x,450,'enemy');
- this.enemies.add(e);
-};
-
 Level1Scene.prototype.playerHit=function(p,e){
  if(p.body.touching.down){
-   e.destroy();
-   p.setVelocityY(-400);
+   e.destroy(); p.setVelocityY(-400);
  }else{
    this.lives--;
    if(soundEnabled) this.hitSfx.play();
    if(this.lives<=0){
-     alert('💀 GAME OVER');
+     alert("💀 GAME OVER");
      this.scene.start('MapScene');
    }
    p.setX(this.checkpointX);
@@ -172,12 +166,11 @@ Level1Scene.prototype.playerHit=function(p,e){
 };
 
 Level1Scene.prototype.hitBoss=function(f,b){
- f.destroy();
- b.hp--;
+ f.destroy(); b.hp--;
  if(soundEnabled) this.hitSfx.play();
  if(b.hp<=0){
    b.destroy();
-   alert('🏆 BOSS YENİLDİ!');
+   alert("🏆 BOSS YENİLDİ");
    this.scene.start('MapScene');
  }
 };
@@ -199,7 +192,11 @@ Level1Scene.prototype.createUI=function(){
  this.livesText=this.add.text(20,20,'❤️ x'+this.lives,
    {fontSize:'24px'}).setScrollFactor(0);
 };
-</script>
 
+/* ================= SERVICE WORKER ================= */
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.register('sw.js');
+}
+</script>
 </body>
 </html>
