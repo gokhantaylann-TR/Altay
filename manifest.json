@@ -6,7 +6,7 @@
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "landscape",
-  "icons": [
+  "icons": []
     {
       "src": "icons/icon-192.png",
       "sizes": "192x192",
