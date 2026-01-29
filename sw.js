@@ -1,18 +1,16 @@
-const CACHE_NAME = 'altay-game-v1';
-const ASSETS = [
-  './',
-  './index.html',
-  'https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js'
-];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+self.addEventListener("install",e=>{
+ self.skipWaiting();
 });
 
-self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    caches.match(e.request).then((response) => response || fetch(e.request))
-  self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('fetch', () => {});
+self.addEventListener("fetch",e=>{
+ e.respondWith(
+  caches.open("altay-cache").then(cache=>{
+   return cache.match(e.request).then(resp=>{
+    return resp||fetch(e.request).then(net=>{
+     cache.put(e.request,net.clone());
+     return net;
+    });
+   });
+  })
+ );
+});
