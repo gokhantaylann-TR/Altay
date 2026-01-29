@@ -2,275 +2,210 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>Altay'ın Macerası</title>
-
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 
 <style>
-body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
-canvas { display: block; margin: 0 auto; }
+body { margin:0; background:#000; overflow:hidden; }
+canvas { display:block; margin:auto; }
+
+.btn {
+ position:fixed;
+ bottom:20px;
+ width:60px;
+ height:60px;
+ border-radius:50%;
+ background:#ffffff44;
+ color:#fff;
+ font-size:28px;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ user-select:none;
+}
+
+#left { left:20px; }
+#right { left:100px; }
+#jump { right:100px; }
+#fire { right:20px; }
 </style>
 </head>
 <body>
 
+<div id="left" class="btn">◀</div>
+<div id="right" class="btn">▶</div>
+<div id="jump" class="btn">⤒</div>
+<div id="fire" class="btn">🔥</div>
+
 <script>
-/* ================= GLOBAL ================= */
-const WIDTH = 800, HEIGHT = 600;
-const WORLD_WIDTH = 5200;
-let soundEnabled = true;
+const WIDTH=800, HEIGHT=600, WORLD_WIDTH=4000;
+let soundEnabled=true;
+let mobileInput={left:false,right:false,jump:false,fire:false};
 
-/* ================= MAP SCENE ================= */
-class MapScene extends Phaser.Scene {
-    constructor() { super('MapScene'); }
+/* ================= MOBILE CONTROLS ================= */
+function bindBtn(id,key){
+ const el=document.getElementById(id);
+ el.addEventListener("touchstart",()=>mobileInput[key]=true);
+ el.addEventListener("touchend",()=>mobileInput[key]=false);
+}
+bindBtn("left","left");
+bindBtn("right","right");
+bindBtn("jump","jump");
+bindBtn("fire","fire");
 
-    preload() {
-        this.load.image('map', 'https://labs.phaser.io/assets/skies/space3.png');
-    }
+/* ================= MENU ================= */
+class MenuScene extends Phaser.Scene{
+ constructor(){super("Menu");}
+ preload(){
+  this.load.image("bg","https://labs.phaser.io/assets/skies/space3.png");
+ }
+ create(){
+  this.add.image(400,300,"bg");
+  this.add.text(400,180,"ALTAY'IN MACERASI",{fontSize:42,color:"#fff"}).setOrigin(0.5);
 
-    create() {
-        this.add.image(400, 300, 'map');
-        this.add.text(WIDTH/2, 200, "ALTAY'IN MACERASI", {
-            fontSize: '42px',
-            color: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        const btn = this.add.text(WIDTH/2, 350, '▶ BAŞLA', {
-            fontSize: '32px',
-            backgroundColor: '#ffffff55',
-            padding: { x: 20, y: 10 },
-            color: '#ffffff'
-        }).setOrigin(0.5).setInteractive();
-
-        btn.on('pointerdown', () => this.scene.start('Level1Scene'));
-    }
+  const start=this.add.text(400,300,"▶ BAŞLA",{fontSize:32,backgroundColor:"#000",padding:10}).setOrigin(0.5).setInteractive();
+  start.on("pointerdown",()=>this.scene.start("Level1"));
+ }
 }
 
-/* ================= LEVEL 1 ================= */
-class Level1Scene extends Phaser.Scene {
-    constructor() { super('Level1Scene'); }
+/* ================= LEVEL ================= */
+class Level1 extends Phaser.Scene{
+ constructor(){super("Level1");}
 
-    preload() {
-        this.load.image('sky', 'https://labs.phaser.io/assets/skies/sky4.png');
-        this.load.image('ground', 'https://labs.phaser.io/assets/sprites/platform.png');
-        this.load.image('enemy', 'https://labs.phaser.io/assets/sprites/phaser-dude.png');
-        this.load.image('flag', 'https://labs.phaser.io/assets/sprites/flag.png');
-        this.load.image('fireball', 'https://labs.phaser.io/assets/sprites/bullets/bullet1.png');
+ preload(){
+  this.load.image("sky","https://labs.phaser.io/assets/skies/sky4.png");
+  this.load.image("ground","https://labs.phaser.io/assets/sprites/platform.png");
+  this.load.image("enemy","https://labs.phaser.io/assets/sprites/phaser-dude.png");
+  this.load.image("bullet","https://labs.phaser.io/assets/sprites/bullets/bullet1.png");
+  this.load.spritesheet("altay","https://labs.phaser.io/assets/sprites/dude.png",{frameWidth:32,frameHeight:48});
+  this.load.audio("hit","https://labs.phaser.io/assets/audio/SoundEffects/explosion.mp3");
+ }
 
-        this.load.spritesheet('altay',
-            'https://labs.phaser.io/assets/sprites/dude.png',
-            { frameWidth: 32, frameHeight: 48 }
-        );
+ create(){
+  this.lives=3;
+  this.physics.world.setBounds(0,0,WORLD_WIDTH,HEIGHT);
+  this.add.tileSprite(0,0,WORLD_WIDTH,HEIGHT,"sky").setOrigin(0);
 
-        this.load.audio('bgm', 'https://labs.phaser.io/assets/audio/tech/techno_01.mp3');
-        this.load.audio('hit', 'https://labs.phaser.io/assets/audio/SoundEffects/explosion.mp3');
-    }
+  this.platforms=this.physics.add.staticGroup();
+  for(let i=0;i<12;i++){
+   this.platforms.create(i*350+200,560,"ground").setScale(2).refreshBody();
+  }
 
-    create() {
-        this.lives = 3;
-        this.checkpointX = 100;
+  this.player=this.physics.add.sprite(100,450,"altay").setCollideWorldBounds(true);
 
-        this.physics.world.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
+  this.anims.create({
+   key:"run",frames:this.anims.generateFrameNumbers("altay",{start:5,end:8}),frameRate:10,repeat:-1
+  });
+  this.anims.create({key:"idle",frames:[{key:"altay",frame:4}],frameRate:10});
 
-        this.add.tileSprite(0, 0, WORLD_WIDTH, HEIGHT, 'sky')
-            .setOrigin(0)
-            .setScrollFactor(0);
+  this.enemies=this.physics.add.group();
+  for(let i=1;i<6;i++) this.spawnEnemy(i*600);
 
-        /* Zemin */
-        this.platforms = this.physics.add.staticGroup();
-        for (let i = 0; i < WORLD_WIDTH / 400 + 2; i++) {
-            this.platforms.create(400 * i + 200, 568, 'ground').setScale(2).refreshBody();
-        }
+  this.bullets=this.physics.add.group();
 
-        this.platforms.create(600, 400, 'ground');
-        this.platforms.create(1200, 350, 'ground');
-        this.platforms.create(2800, 300, 'ground');
+  this.physics.add.collider(this.player,this.platforms);
+  this.physics.add.collider(this.enemies,this.platforms);
+  this.physics.add.overlap(this.player,this.enemies,this.hitPlayer,null,this);
+  this.physics.add.overlap(this.bullets,this.enemies,this.hitEnemy,null,this);
 
-        /* Oyuncu */
-        this.altay = this.physics.add.sprite(100, 450, 'altay');
-        this.altay.setCollideWorldBounds(true);
+  this.cursors=this.input.keyboard.createCursorKeys();
+  this.space=this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-        /* Kamera */
-        this.cameras.main.setBounds(0, 0, WORLD_WIDTH, HEIGHT);
-        this.cameras.main.startFollow(this.altay, true, 0.08, 0.08);
+  this.camera=this.cameras.main;
+  this.camera.setBounds(0,0,WORLD_WIDTH,HEIGHT);
+  this.camera.startFollow(this.player);
 
-        /* Gruplar */
-        this.fireballs = this.physics.add.group();
-        this.enemies = this.physics.add.group();
+  this.hitSfx=this.sound.add("hit");
 
-        this.spawnEnemy(800);
-        this.spawnEnemy(1600);
-        this.spawnEnemy(2400);
+  this.ui();
+ }
 
-        this.boss = this.physics.add.sprite(WORLD_WIDTH - 600, 400, 'enemy')
-            .setScale(3)
-            .setTint(0xff0000);
-        this.boss.hp = 5;
-        this.boss.body.allowGravity = false;
+ ui(){
+  this.livesText=this.add.text(20,20,"❤️ "+this.lives,{fontSize:24}).setScrollFactor(0);
+  this.add.text(400,20,"Yön: Oklar | Zıpla: ↑ | Ateş: Space",{fontSize:14,color:"#fff"}).setOrigin(0.5).setScrollFactor(0);
 
-        this.flag = this.physics.add.staticSprite(WORLD_WIDTH - 2000, 480, 'flag');
+  const soundBtn=this.add.text(750,20,"🔊",{fontSize:28}).setScrollFactor(0).setInteractive();
+  soundBtn.on("pointerdown",()=>{
+   soundEnabled=!soundEnabled;
+   this.sound.mute=!soundEnabled;
+   soundBtn.setText(soundEnabled?"🔊":"🔇");
+  });
+ }
 
-        /* Çarpışmalar */
-        this.physics.add.collider(this.altay, this.platforms);
-        this.physics.add.collider(this.enemies, this.platforms);
+ spawnEnemy(x){
+  const e=this.physics.add.sprite(x,450,"enemy");
+  e.setCollideWorldBounds(true);
+  this.enemies.add(e);
+ }
 
-        this.physics.add.overlap(this.altay, this.enemies, this.playerHit, null, this);
-        this.physics.add.overlap(this.altay, this.boss, this.playerHit, null, this);
-        this.physics.add.overlap(this.fireballs, this.boss, this.hitBoss, null, this);
-        this.physics.add.overlap(this.fireballs, this.enemies, this.hitEnemy, null, this);
-        this.physics.add.overlap(this.altay, this.flag, this.setCheckpoint, null, this);
+ shoot(){
+  const dir=this.player.flipX?-1:1;
+  const b=this.bullets.create(this.player.x+dir*20,this.player.y,"bullet");
+  b.setVelocityX(dir*600);
+  b.body.allowGravity=false;
+  this.time.delayedCall(1200,()=>b.destroy());
+ }
 
-        /* Animasyon */
-        this.anims.create({
-            key: 'run',
-            frames: this.anims.generateFrameNumbers('altay', { start: 5, end: 8 }),
-            frameRate: 10,
-            repeat: -1
-        });
+ hitEnemy(b,e){
+  b.destroy(); e.destroy();
+  if(soundEnabled) this.hitSfx.play();
+ }
 
-        this.anims.create({
-            key: 'idle',
-            frames: [{ key: 'altay', frame: 4 }],
-            frameRate: 10
-        });
+ hitPlayer(){
+  this.lives--;
+  this.livesText.setText("❤️ "+this.lives);
+  if(soundEnabled) this.hitSfx.play();
 
-        /* Kontroller */
-        this.cursors = this.input.keyboard.createCursorKeys();
-        this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+  if(this.lives<=0){
+   this.scene.start("Menu");
+  }else{
+   this.player.setPosition(100,400);
+  }
+ }
 
-        /* Ses */
-        this.bgm = this.sound.add('bgm', { loop: true, volume: 0.3 });
-        this.hitSfx = this.sound.add('hit');
+ update(){
+  const left=this.cursors.left.isDown||mobileInput.left;
+  const right=this.cursors.right.isDown||mobileInput.right;
+  const jump=(this.cursors.up.isDown||mobileInput.jump)&&this.player.body.blocked.down;
+  const fire=Phaser.Input.Keyboard.JustDown(this.space)||mobileInput.fire;
 
-        this.input.once('pointerdown', () => {
-            if (soundEnabled && !this.bgm.isPlaying) this.bgm.play();
-        });
+  if(left){
+   this.player.setVelocityX(-220);
+   this.player.flipX=true;
+   this.player.anims.play("run",true);
+  }else if(right){
+   this.player.setVelocityX(220);
+   this.player.flipX=false;
+   this.player.anims.play("run",true);
+  }else{
+   this.player.setVelocityX(0);
+   this.player.anims.play("idle",true);
+  }
 
-        this.createUI();
-    }
+  if(jump) this.player.setVelocityY(-720);
+  if(fire) this.shoot();
 
-    update() {
-        if (this.cursors.left.isDown) {
-            this.altay.setVelocityX(-220);
-            this.altay.anims.play('run', true);
-            this.altay.flipX = true;
-        } else if (this.cursors.right.isDown) {
-            this.altay.setVelocityX(220);
-            this.altay.anims.play('run', true);
-            this.altay.flipX = false;
-        } else {
-            this.altay.setVelocityX(0);
-            this.altay.anims.play('idle', true);
-        }
-
-        if (this.cursors.up.isDown && this.altay.body.blocked.down) {
-            this.altay.setVelocityY(-750);
-        }
-
-        if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-            this.shootFireball();
-        }
-
-        this.enemies.children.iterate(e => {
-            if (!e) return;
-            if (Math.abs(e.x - this.altay.x) < 400) {
-                e.setVelocityX(this.altay.x < e.x ? -100 : 100);
-            } else {
-                e.setVelocityX(Math.sin(this.time.now * 0.001 + e.x) * 60);
-            }
-        });
-
-        if (this.boss.active) {
-            this.boss.x = (WORLD_WIDTH - 600) + Math.sin(this.time.now * 0.002) * 200;
-            this.boss.y = 400 + Math.cos(this.time.now * 0.005) * 100;
-        }
-    }
-
-    spawnEnemy(x) {
-        const e = this.physics.add.sprite(x, 400, 'enemy');
-        e.setCollideWorldBounds(true);
-        this.enemies.add(e);
-    }
-
-    shootFireball() {
-        const velocityX = this.altay.flipX ? -600 : 600;
-        const startX = this.altay.flipX ? this.altay.x - 30 : this.altay.x + 30;
-
-        const f = this.fireballs.create(startX, this.altay.y, 'fireball');
-        f.setVelocityX(velocityX);
-        f.body.allowGravity = false;
-
-        this.time.delayedCall(1500, () => f.destroy());
-    }
-
-    playerHit(p) {
-        this.takeDamage(p);
-    }
-
-    takeDamage(p) {
-        this.lives--;
-        this.livesText.setText('❤️ x ' + this.lives);
-
-        if (soundEnabled) this.hitSfx.play();
-
-        if (this.lives <= 0) {
-            this.physics.pause();
-            this.add.text(this.cameras.main.midPoint.x, this.cameras.main.midPoint.y,
-                'OYUN BİTTİ', { fontSize: '64px', color: '#fff', backgroundColor: '#000' }
-            ).setOrigin(0.5);
-
-            this.time.delayedCall(2000, () => this.scene.start('MapScene'));
-        } else {
-            p.setPosition(this.checkpointX, 400);
-        }
-    }
-
-    hitBoss(f, b) {
-        f.destroy();
-        b.hp--;
-
-        if (b.hp <= 0) {
-            b.destroy();
-            this.add.text(b.x, b.y, 'ZAFER!', { fontSize: '48px', color: '#fff' }).setOrigin(0.5);
-            this.time.delayedCall(2500, () => this.scene.start('MapScene'));
-        }
-    }
-
-    hitEnemy(f, e) {
-        f.destroy();
-        e.destroy();
-    }
-
-    setCheckpoint(p, f) {
-        this.checkpointX = f.x;
-        f.setTint(0x00ff00);
-    }
-
-    createUI() {
-        this.livesText = this.add.text(20, 20, '❤️ x ' + this.lives, {
-            fontSize: '24px',
-            color: '#fff'
-        }).setScrollFactor(0);
-
-        this.add.text(WIDTH / 2, 20,
-            'Hareket: Yön Tuşları | Ateş: Space',
-            { fontSize: '16px', color: '#ffffff' }
-        ).setScrollFactor(0).setOrigin(0.5);
-    }
+  this.enemies.children.iterate(e=>{
+   if(e) e.setVelocityX(Math.sin(this.time.now*0.002+e.x)*80);
+  });
+ }
 }
 
-/* ================= CONFIG ================= */
-const config = {
-    type: Phaser.AUTO,
-    width: WIDTH,
-    height: HEIGHT,
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    physics: { default: 'arcade', arcade: { gravity: { y: 1400 }, debug: false } },
-    scene: [MapScene, Level1Scene]
-};
+/* ================= GAME ================= */
+new Phaser.Game({
+ type:Phaser.AUTO,
+ width:WIDTH,
+ height:HEIGHT,
+ physics:{default:"arcade",arcade:{gravity:{y:1400},debug:false}},
+ scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},
+ scene:[MenuScene,Level1]
+});
 
-new Phaser.Game(config);
+/* ================= OFFLINE ================= */
+if("serviceWorker" in navigator){
+ navigator.serviceWorker.register("sw.js");
+}
 </script>
 </body>
 </html>
