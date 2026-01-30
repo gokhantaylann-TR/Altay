@@ -3,60 +3,79 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Altay’ın Macerası - Düzeltilmiş Versiyon</title>
+<title>Altay'ın Büyük Macerası</title>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 
 <style>
+/* CSS: Tam ekran ve dokunmatik kontroller için ayarlar */
 html, body {
   margin: 0;
   padding: 0;
-  background: #87ceeb;
+  background: #202020;
   overflow: hidden;
-  touch-action: none; /* Mobilde çift dokunma zoom'unu engeller */
+  touch-action: none;
 }
 
-.ui {
+canvas {
+    display: block;
+    margin: 0 auto;
+}
+
+.ui-controls {
   position: fixed;
   bottom: 20px;
   left: 0;
   right: 0;
   display: flex;
   justify-content: space-between;
-  padding: 0 20px;
-  pointer-events: none;
+  padding: 0 30px;
+  pointer-events: none; /* UI arkasındaki oyuna tıklanabilsin diye */
   z-index: 100;
 }
 
-/* Buton stilleri */
-.ui button {
-  pointer-events: auto;
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  font-size: 30px;
-  background: rgba(0,0,0,0.5);
-  color: #fff;
-  outline: none;
-  user-select: none; /* Metin seçimini engeller */
-  -webkit-user-select: none;
+.ui-controls div {
+    pointer-events: auto;
 }
 
-.ui button:active {
-  background: rgba(0,0,0,0.8);
+.btn {
+  width: 75px;
+  height: 75px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.5);
+  font-size: 32px;
+  background: rgba(0,0,0,0.3);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.btn:active {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(0.95);
+}
+
+.jump-btn {
+    background: rgba(255, 165, 0, 0.4); /* Zıplama butonu turuncu tonlu */
 }
 </style>
 </head>
 
 <body>
 
-<div class="ui">
-  <div style="pointer-events: auto;">
-    <button id="btnLeft">◀</button>
-    <button id="btnRight">▶</button>
+<div class="ui-controls">
+  <div>
+    <div id="btnLeft" class="btn">◀</div>
+    <div id="btnRight" class="btn">▶</div>
   </div>
-  <button id="btnJump">▲</button>
+  <div>
+    <div id="btnJump" class="btn jump-btn">▲</div>
+  </div>
 </div>
 
 <script>
@@ -64,6 +83,7 @@ const config = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
+  backgroundColor: '#87ceeb',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH
@@ -71,210 +91,370 @@ const config = {
   physics: {
     default: 'arcade',
     arcade: { 
-        gravity: { y: 600 }, // Yer çekimini biraz azalttım, daha kontrollü olsun
+        gravity: { y: 800 }, 
         debug: false 
     }
   },
   scene: { preload, create, update }
 };
 
-let player, cursors;
-// Değişken isimlerini buton ID'lerinden farklı yaptım
-let isMovingLeft = false;
-let isMovingRight = false;
-let isJumping = false;
-
+// --- GLOBAL DEĞİŞKENLER ---
+let player;
+let platforms;
+let cursors;
 let enemies;
+let diamonds;
+let score = 0;
+let health = 3;
+let timer = 0;
+let gameTimeEvent;
+
+// UI Metinleri
+let scoreText;
+let healthText;
+let timeText;
 let gameOver = false;
+let isInvincible = false; // Hasar aldıktan sonra kısa süre koruma
+
+// Kontrol değişkenleri
+let moveLeft = false;
+let moveRight = false;
+let doJump = false;
 
 new Phaser.Game(config);
 
 function preload() {
+  // Phaser Labs sunucusundan assetler
+  this.load.image('sky', 'https://labs.phaser.io/assets/skies/space3.png'); // Uzay/Gökyüzü
   this.load.image('ground', 'https://labs.phaser.io/assets/sprites/platform.png');
+  this.load.image('diamond', 'https://labs.phaser.io/assets/sprites/diamond.png'); // Elmas
   this.load.spritesheet('altay', 'https://labs.phaser.io/assets/sprites/dude.png', { frameWidth: 32, frameHeight: 48 });
-  // Ördek yerine standart bir düşman görseli (Phaser topu) veya varsa ördek
-  this.load.image('enemy', 'https://labs.phaser.io/assets/sprites/phaser-dude.png'); 
-  // Castle yerine 'star' kullanıyorum, daha garantidir.
-  this.load.image('goal', 'https://labs.phaser.io/assets/sprites/star.png');
+  this.load.spritesheet('baddie', 'https://labs.phaser.io/assets/sprites/baddie.png', { frameWidth: 32, frameHeight: 32 }); // Düşman
+  this.load.image('flag', 'https://labs.phaser.io/assets/sprites/phaser-dude.png'); // Kale bayrağı için
 }
 
 function create() {
+  // Değişkenleri sıfırla (Restart için)
+  score = 0;
+  health = 3;
+  timer = 0;
   gameOver = false;
   
-  // Dünya sınırları
-  this.physics.world.setBounds(0, 0, 1400, 600);
+  // 1. DÜNYA AYARLARI
+  // Harita genişliği 3200px
+  this.physics.world.setBounds(0, 0, 3200, 600);
+  
+  // Arkaplan (Kamera ile hafif hareket etsin - Parallax benzeri)
+  this.add.tileSprite(1600, 300, 3200, 600, 'sky').setScrollFactor(0.5);
 
-  // Arkaplan
-  this.add.rectangle(0, 0, 1400, 600, 0x87ceeb).setOrigin(0,0);
+  // 2. PLATFORMLAR & KALE
+  platforms = this.physics.add.staticGroup();
+  createLevel(platforms); // Seviye tasarımını fonksiyonla yapalım
+  createCastle(platforms, 3000, 480); // 3000. piksele kale kur
 
-  const platforms = this.physics.add.staticGroup();
-
-  // ZEMİN OLUŞTURMA
-  for(let i=0; i<8; i++){
-    platforms.create(200 * i, 580, 'ground').setScale(2).refreshBody();
-  }
-
-  // PLATFORMLAR
-  platforms.create(300, 420, 'ground');
-  platforms.create(450, 350, 'ground');
-  platforms.create(750, 280, 'ground').setScale(1.5, 1).refreshBody(); // Uzun platform
-  platforms.create(1100, 220, 'ground');
-  platforms.create(1250, 350, 'ground');
-
-  // OYUNCU (ALTAY)
+  // 3. OYUNCU
   player = this.physics.add.sprite(100, 450, 'altay');
   player.setBounce(0.1);
   player.setCollideWorldBounds(true);
-
-  // ANİMASYONLAR
-  if(!this.anims.exists('left')) {
-      this.anims.create({
-        key: 'left',
-        frames: this.anims.generateFrameNumbers('altay', { start: 0, end: 3 }),
-        frameRate: 10,
-        repeat: -1
-      });
-  }
   
-  if(!this.anims.exists('right')) {
-      this.anims.create({
-        key: 'right',
-        frames: this.anims.generateFrameNumbers('altay', { start: 5, end: 8 }),
-        frameRate: 10,
-        repeat: -1
-      });
-  }
+  // Animasyonlar
+  this.anims.create({
+      key: 'left',
+      frames: this.anims.generateFrameNumbers('altay', { start: 0, end: 3 }),
+      frameRate: 10, repeat: -1
+  });
+  this.anims.create({
+      key: 'turn',
+      frames: [ { key: 'altay', frame: 4 } ],
+      frameRate: 20
+  });
+  this.anims.create({
+      key: 'right',
+      frames: this.anims.generateFrameNumbers('altay', { start: 5, end: 8 }),
+      frameRate: 10, repeat: -1
+  });
 
-  if(!this.anims.exists('idle')) {
-      this.anims.create({
-        key: 'idle',
-        frames: [ { key: 'altay', frame: 4 } ],
-        frameRate: 20
-      });
-  }
+  // Düşman Animasyonu
+  this.anims.create({
+      key: 'duckWalk',
+      frames: this.anims.generateFrameNumbers('baddie', { start: 0, end: 3 }),
+      frameRate: 10, repeat: -1
+  });
 
-  // DÜŞMANLAR
+  // 4. ETKİLEŞİMLİ NESNELER (ELMASLAR)
+  diamonds = this.physics.add.group({
+      key: 'diamond',
+      repeat: 20, // 20 tane elmas
+      setXY: { x: 300, y: 0, stepX: 130 } // 300'den başla 130 aralıkla diz
+  });
+
+  diamonds.children.iterate(function (child) {
+      child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+      // Elmasları rastgele platformların üstüne denk gelecek şekilde biraz dağıtalım
+      child.y = Phaser.Math.Between(100, 400); 
+  });
+
+  // 5. DÜŞMANLAR (AI)
   enemies = this.physics.add.group();
-  
-  // 1. Düşman
-  createEnemy(enemies, 750, 240, 680, 820);
-  // 2. Düşman
-  createEnemy(enemies, 400, 310, 380, 520);
+  // Rastgele yerlere düşman ekle
+  createEnemy(enemies, 600, 400);
+  createEnemy(enemies, 1200, 300);
+  createEnemy(enemies, 1800, 450);
+  createEnemy(enemies, 2400, 250);
+  createEnemy(enemies, 2700, 450);
 
-  // BİTİŞ NOKTASI (KALE/YILDIZ)
-  const goal = this.physics.add.staticImage(1350, 520, 'goal').setScale(2);
-
-  // ÇARPIŞMALAR
-  this.physics.add.collider(player, platforms);
-  this.physics.add.collider(enemies, platforms);
-
-  this.physics.add.overlap(player, enemies, hitEnemy, null, this);
-  this.physics.add.overlap(player, goal, winGame, null, this);
-
-  // KAMERA
-  this.cameras.main.setBounds(0, 0, 1400, 600);
+  // 6. KAMERA
+  this.cameras.main.setBounds(0, 0, 3200, 600);
   this.cameras.main.startFollow(player, true, 0.08, 0.08);
 
-  // KLAVYE KONTROLLERİ
+  // 7. UI (Arayüz) - Ekrana Sabitlenmiş
+  createUI(this);
+
+  // 8. FİZİK ÇARPIŞMALARI
+  this.physics.add.collider(player, platforms);
+  this.physics.add.collider(diamonds, platforms);
+  this.physics.add.collider(enemies, platforms);
+  
+  this.physics.add.overlap(player, diamonds, collectDiamond, null, this);
+  this.physics.add.overlap(player, enemies, hitEnemy, null, this);
+  
+  // Kale kapısına gizli bir "Bitiş" tetikleyicisi koyalım
+  const winZone = this.add.zone(3080, 500, 50, 100);
+  this.physics.add.existing(winZone);
+  this.physics.add.overlap(player, winZone, winLevel, null, this);
+
+  // 9. KONTROLLER
   cursors = this.input.keyboard.createCursorKeys();
+  setupTouchControls();
 
-  // --- MOBİL / BUTON KONTROLLERİ (DÜZELTİLEN KISIM) ---
-  setupMobileControls();
+  // Süre Sayacı
+  gameTimeEvent = this.time.addEvent({ delay: 1000, callback: onSecondPassed, callbackScope: this, loop: true });
 }
 
-function createEnemy(group, x, y, minX, maxX) {
-    const enemy = group.create(x, y, 'enemy');
-    enemy.setTint(0xff0000); // Düşman olduğu belli olsun diye kırmızı yaptım
-    enemy.setScale(0.8);
-    enemy.setVelocityX(100);
-    enemy.minX = minX;
-    enemy.maxX = maxX;
-    enemy.setBounce(1);
+// --- YARDIMCI FONKSİYONLAR ---
+
+function createLevel(platforms) {
+    // Zemin (Boşluklu yapı)
+    // 0-800 arası zemin
+    createLongPlatform(platforms, 0, 580, 4); 
+    // 1000-1800 arası zemin (bir boşluk var)
+    createLongPlatform(platforms, 1000, 580, 5);
+    // 2100-3200 arası (kale yolu)
+    createLongPlatform(platforms, 2100, 580, 10);
+
+    // Havada asılı platformlar (Rastgelelik hissi)
+    platforms.create(400, 400, 'ground');
+    platforms.create(700, 300, 'ground');
+    platforms.create(900, 450, 'ground').setScale(0.5, 1).refreshBody(); // Küçük platform
+    
+    platforms.create(1300, 250, 'ground'); // Yüksek
+    platforms.create(1500, 400, 'ground');
+    
+    platforms.create(1900, 350, 'ground');
+    platforms.create(2300, 280, 'ground'); // Kaleye giden yüksek yol
+    
+    // Hareketli platform yerine sabit zorlu basamaklar
+    platforms.create(2600, 400, 'ground').setScale(0.5,1).refreshBody();
+    platforms.create(2750, 300, 'ground').setScale(0.5,1).refreshBody();
+}
+
+function createLongPlatform(group, startX, y, count) {
+    for(let i=0; i<count; i++) {
+        group.create(startX + (i * 400), y, 'ground').setScale(2).refreshBody();
+    }
+}
+
+function createCastle(platforms, x, y) {
+    // Kaleyi "ground" görseliyle inşa edelim
+    // Sol ve Sağ duvarlar
+    platforms.create(x, y - 50, 'ground').setScale(0.2, 5).refreshBody().setTint(0x888888);
+    platforms.create(x + 160, y - 50, 'ground').setScale(0.2, 5).refreshBody().setTint(0x888888);
+    
+    // Çatı
+    platforms.create(x + 80, y - 180, 'ground').setScale(1, 0.5).refreshBody().setTint(0x666666);
+    
+    // İç zemin
+    platforms.create(x + 80, y + 20, 'ground').setScale(0.8, 0.5).refreshBody().setTint(0x888888);
+
+    // Bayrak direği
+    platforms.create(x + 80, y - 230, 'ground').setScale(0.05, 2).refreshBody().setTint(0x000000);
+}
+
+function createEnemy(group, x, y) {
+    const enemy = group.create(x, y, 'baddie');
+    enemy.setTint(0xffff00); // Sarı yapalım (Ördek benzeri)
+    enemy.setBounce(0.5);
     enemy.setCollideWorldBounds(true);
+    enemy.setVelocityX(100);
+    enemy.anims.play('duckWalk', true);
+    
+    // AI Özellikleri
+    enemy.direction = 1; 
+    enemy.jumpTimer = 0;
 }
 
-function setupMobileControls() {
-    // ID ile elemanları güvenli şekilde seçiyoruz
-    const btnLeft = document.getElementById('btnLeft');
-    const btnRight = document.getElementById('btnRight');
-    const btnJump = document.getElementById('btnJump');
-
-    // Helper fonksiyon: Olay dinleyicilerini ekle (Hem Mouse hem Touch için)
-    const addEvents = (btn, startAction, endAction) => {
-        // Dokunmatik
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); startAction(); }, {passive: false});
-        btn.addEventListener('touchend', (e) => { e.preventDefault(); endAction(); });
-        // Mouse (Bilgisayar testi için)
-        btn.addEventListener('mousedown', (e) => { startAction(); });
-        btn.addEventListener('mouseup', (e) => { endAction(); });
-        btn.addEventListener('mouseleave', (e) => { endAction(); });
-    };
-
-    addEvents(btnLeft, () => isMovingLeft = true, () => isMovingLeft = false);
-    addEvents(btnRight, () => isMovingRight = true, () => isMovingRight = false);
-    addEvents(btnJump, () => isJumping = true, () => isJumping = false);
+function createUI(scene) {
+    const style = { font: '20px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 4 };
+    
+    // Ekranın üstüne sabitlemek için setScrollFactor(0) kullanılır
+    
+    // Sol Üst: Can ve Puan
+    healthText = scene.add.text(20, 20, 'Can: ❤️❤️❤️', style).setScrollFactor(0);
+    scoreText = scene.add.text(20, 50, 'Puan: 0', style).setScrollFactor(0);
+    
+    // Sağ Üst: Süre
+    timeText = scene.add.text(780, 20, 'Süre: 0s', style).setScrollFactor(0).setOrigin(1, 0); // Sağdan hizala
 }
 
 function update() {
-  if (gameOver) return;
+    if (gameOver) return;
 
-  // Hareket Mantığı (Klavye VEYA Butonlar)
-  if (cursors.left.isDown || isMovingLeft) {
-    player.setVelocityX(-200);
-    player.anims.play('left', true);
-  } else if (cursors.right.isDown || isMovingRight) {
-    player.setVelocityX(200);
-    player.anims.play('right', true);
-  } else {
-    player.setVelocityX(0);
-    player.anims.play('idle');
-  }
-
-  // Zıplama Mantığı
-  // player.body.touching.down: Oyuncu yere basıyor mu?
-  if ((cursors.up.isDown || isJumping) && player.body.touching.down) {
-    player.setVelocityY(-450);
-    isJumping = false; // Sürekli zıplamayı önlemek için (isteğe bağlı)
-  }
-
-  // Düşman Yapay Zekası
-  enemies.children.iterate((enemy) => {
-    if (!enemy) return;
-    
-    if (enemy.x <= enemy.minX) {
-        enemy.setVelocityX(100);
-        enemy.flipX = false; // Yüzünü çevir
-    } else if (enemy.x >= enemy.maxX) {
-        enemy.setVelocityX(-100);
-        enemy.flipX = true;
+    // --- OYUNCU HAREKETİ ---
+    if (cursors.left.isDown || moveLeft) {
+        player.setVelocityX(-220);
+        player.anims.play('left', true);
+    } else if (cursors.right.isDown || moveRight) {
+        player.setVelocityX(220);
+        player.anims.play('right', true);
+    } else {
+        player.setVelocityX(0);
+        player.anims.play('turn');
     }
-  });
+
+    if ((cursors.up.isDown || doJump) && player.body.touching.down) {
+        player.setVelocityY(-550);
+        doJump = false; // Auto jump engellemek için
+    }
+
+    // --- DÜŞMAN AI ---
+    enemies.children.iterate(function (child) {
+        if(!child) return;
+
+        // 1. Kenarlara gelince dön
+        if (child.body.blocked.right) {
+            child.setVelocityX(-100);
+            child.direction = -1;
+            child.flipX = false;
+        } else if (child.body.blocked.left) {
+            child.setVelocityX(100);
+            child.direction = 1;
+            child.flipX = true;
+        }
+
+        // 2. Rastgele Zıplama AI (Ördek zıplaması)
+        // %1 ihtimalle zıplasın (her karede kontrol edilir)
+        if (child.body.touching.down && Math.random() < 0.01) {
+            child.setVelocityY(-400);
+        }
+    });
+
+    // Oyuncu aşağı düşerse (Boşluğa)
+    if (player.y > 600) {
+        takeDamage(this);
+        // Düşünce başlangıca değil, en son güvenli yere atmak zor olacağı için
+        // Can azalır ve oyuncu 100px yukarı ışınlanır veya başa döner.
+        // Basitlik için başa alıyoruz ama can azaltarak.
+        player.setPosition(100, 450);
+    }
+}
+
+function collectDiamond(player, diamond) {
+    diamond.disableBody(true, true);
+    score += 10;
+    scoreText.setText('Puan: ' + score);
 }
 
 function hitEnemy(player, enemy) {
-  // Eğer oyuncu düşmanın tepesindeyse (Yere basmıyor ve düşmanın üstünde)
-  if (player.body.velocity.y > 0 && player.y < enemy.y) {
-    enemy.destroy();
-    player.setVelocityY(-300); // Küçük bir zıplama efekti
-  } else {
-    // Oyuncu öldü
-    this.physics.pause();
-    player.setTint(0xff0000);
-    player.anims.play('idle');
-    gameOver = true;
-    
-    // 1 saniye sonra yeniden başlat
-    setTimeout(() => {
-        this.scene.restart();
-    }, 1000);
-  }
+    if (isInvincible || gameOver) return;
+
+    // Mario mantığı: Üstüne basarsan düşman ölür
+    if (player.body.velocity.y > 0 && player.y < enemy.y) {
+        enemy.destroy();
+        player.setVelocityY(-350); // Zıpla
+        score += 20;
+        scoreText.setText('Puan: ' + score);
+    } else {
+        // Yandan çarparsan hasar al
+        takeDamage(this);
+    }
 }
 
-function winGame(player, goal) {
-    this.physics.pause();
-    player.setTint(0x00ff00);
-    alert('Tebrikler! Bölümü Kazandın! 🏆');
-    this.scene.restart();
+function takeDamage(scene) {
+    if (isInvincible) return;
+
+    health--;
+    updateHealthUI();
+    
+    // Oyuncuyu geriye fırlat
+    player.setVelocityY(-200);
+    player.setTint(0xff0000);
+    
+    if (health <= 0) {
+        finishGame(scene, false);
+    } else {
+        // Dokunulmazlık başlat
+        isInvincible = true;
+        scene.time.delayedCall(1000, () => {
+            isInvincible = false;
+            player.clearTint();
+        });
+    }
+}
+
+function updateHealthUI() {
+    let hearts = '';
+    for(let i=0; i<health; i++) hearts += '❤️';
+    healthText.setText('Can: ' + hearts);
+}
+
+function onSecondPassed() {
+    if (gameOver) return;
+    timer++;
+    timeText.setText('Süre: ' + timer + 's');
+}
+
+function winLevel(player, zone) {
+    finishGame(this, true);
+}
+
+function finishGame(scene, isWin) {
+    scene.physics.pause();
+    gameOver = true;
+    
+    let msg = isWin ? 'TEBRİKLER!\nKALE FETHEDİLDİ!' : 'OYUN BİTTİ!';
+    let color = isWin ? '#00ff00' : '#ff0000';
+    
+    let txt = scene.add.text(scene.cameras.main.scrollX + 400, 300, msg, {
+        fontSize: '50px',
+        fill: color,
+        align: 'center',
+        backgroundColor: '#000'
+    }).setOrigin(0.5);
+    
+    scene.add.text(scene.cameras.main.scrollX + 400, 380, 'Puan: ' + score + ' | Süre: ' + timer + 's', {
+        fontSize: '24px', fill: '#fff'
+    }).setOrigin(0.5);
+
+    // Ekrana dokununca restart
+    scene.input.once('pointerdown', () => {
+        scene.scene.restart();
+    });
+}
+
+// --- DOKUNMATİK KONTROLLER (EventListener) ---
+function setupTouchControls() {
+    const addTouch = (id, startFn, endFn) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); startFn(); }, {passive:false});
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); endFn(); });
+        btn.addEventListener('mousedown', () => startFn());
+        btn.addEventListener('mouseup', () => endFn());
+        btn.addEventListener('mouseleave', () => endFn());
+    };
+
+    addTouch('btnLeft', () => moveLeft = true, () => moveLeft = false);
+    addTouch('btnRight', () => moveRight = true, () => moveRight = false);
+    addTouch('btnJump', () => doJump = true, () => doJump = false);
 }
 </script>
 </body>
